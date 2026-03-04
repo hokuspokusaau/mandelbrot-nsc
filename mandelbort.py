@@ -23,6 +23,7 @@ A = np.random.rand(N, N)
 
                                               
 ######## Main ##########
+
 def mandelbrot_point(c, max_iter):
     z = 0+0j
     for i in range(max_iter):
@@ -92,12 +93,38 @@ def row_sum(ar):
 def column_sum(ar):
      for j in range(N):
           s = np.sum(ar[:, j])
+
+
+def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
+     gridsize = [256, 512, 1024, 2048, 4096]
+     median_times = []
+
+
+     for i in range(5):
+          times = []
+          gs = gridsize[i]
+          gs_width, gs_height = gs, gs
+
+          for _ in range(n_runs):
+               t0 = time.perf_counter()
+               result = compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, gs_width, gs_height, max_iter)
+               times.append(time.perf_counter() - t0)
+
+          median_t = statistics.median(times)
+          median_times.append(median_t)
+          print(f"Median for {gs}x{gs}: {median_t :.4f}s "
+               f"(min={min(times) :.4f}, max={max(times) :.4f})")
+     return gridsize, median_times, result
+
+#t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 ######## Run ##########
 
+##### Problem Size Scaling #####
+#runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
 ##### Performance #####
-t, M = benchmark(row_sum,A)
-t, M = benchmark(column_sum,A)
+#t, M = benchmark(row_sum,A)
+#t, M = benchmark(column_sum,A)
 #t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 
@@ -114,6 +141,7 @@ t, M = benchmark(column_sum,A)
 
 
 ####### Plotter ########
+##### Mandelbrot #####
 #plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
 #plt.colorbar()
 #plt.title('Mandelbrot')
@@ -121,4 +149,13 @@ t, M = benchmark(column_sum,A)
 #plt.show()
 
 
+##### Problem Size Scaling ######
+x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
+plt.figure()
+plt.plot(x, y, marker='o')
+plt.xlabel('Grid Size (N x N)')
+plt.ylabel('Median Runtime (s)')
+plt.title('Runtime vs Grid Size')
+plt.grid(True)
+plt.show()
