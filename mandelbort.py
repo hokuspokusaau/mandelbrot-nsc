@@ -43,12 +43,21 @@ def compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter):
         xs = np.linspace(xmin, xmax, width)
         ys = np.linspace(ymin, ymax, height)
 
-        # Naive implementation:
-        for i, y in enumerate(ys):
-            for j, x in enumerate(xs):
-                c = complex(x, y)
-                result[i, j] = mandelbrot_point(c, max_iter)
+        for i, y in enumerate(ys) :
+             for j, x in enumerate(xs):
+                  c = complex(x,y)
+                  result[i, j] = mandelbrot_point(c, max_iter)
+        
         return result
+
+def compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height):
+     x = np.linspace(xmin, xmax, width)
+     y = np.linspace(ymin, ymax, height)
+     X, Y = np.meshgrid(x,y)
+     C = X + 1j*Y
+
+     print(f"shape: {C.shape}")
+     print(f"type: {C.dtype}")
 
 def benchmark(func, *args, n_runs=3):
      # Time func, return median of n_runs.
@@ -62,10 +71,6 @@ def benchmark(func, *args, n_runs=3):
            f"(min={min(times) :.4f}, max={max(times) :.4f})")
      return median_t, result
 #######################################################################
-
-
-
-
 
 """
  ███████████ █████ ██████   ██████ ██████████ ███████████  
@@ -92,6 +97,10 @@ print(f"Average time: {np.mean(timer_runs): .3f} seconds")
 
 t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 
+# show that the vectorized helper actually runs
+print("\n--- vectorized helper demo ---")
+compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height)
+
 #######################################################################
 
 
@@ -116,3 +125,5 @@ t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_i
 #plt.savefig('Mandelbrot.png')
 #plt.show()
 #######################################################################
+
+
