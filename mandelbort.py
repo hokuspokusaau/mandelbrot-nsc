@@ -59,6 +59,17 @@ def compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter
           M[mask] += 1
      return M
 
+def results_sanity(one_result, another_result):
+     if np.allclose(one_result, another_result):
+          print("Results match!")
+     else:
+          print("Results differ!")
+
+def compare_results(one_result, another_result):
+     diff = np.abs(one_result - another_result)
+     print(f"Max difference : {diff.max()}")
+     print(f"Different pixels: {(diff > 0).sum()}")
+
 
 def benchmark(func, *args, n_runs=3):
      # Time func, return median of n_runs.
@@ -68,18 +79,25 @@ def benchmark(func, *args, n_runs=3):
           result = func(*args)
           times.append(time.perf_counter() - t0)
      median_t = statistics.median(times)
-     print(f"Median: {median_t :.4f}s "
+     print(f"Median for {func}: {median_t :.4f}s "
            f"(min={min(times) :.4f}, max={max(times) :.4f})")
      return median_t, result
 
 
              
 ######## Run ##########
+##### Performance #####
 t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
+t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
+###### Results ########
+M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
+M_vectorize = compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter)
 
-# Verify shape and dtype
 
 
+##### Compare #####
+results_sanity(M_naive, M_vectorize)
+compare_results(M_naive, M_vectorize)
 
 
 ####### Plotter ########
