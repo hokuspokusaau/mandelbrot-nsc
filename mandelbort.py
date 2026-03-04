@@ -17,6 +17,9 @@ height  = 1024
 max_iter = 100
 ######################
 
+##### Memory Acces Patterns Array #####
+N = 10000
+A = np.random.rand(N, N)
 
                                               
 ######## Main ##########
@@ -83,29 +86,39 @@ def benchmark(func, *args, n_runs=3):
            f"(min={min(times) :.4f}, max={max(times) :.4f})")
      return median_t, result
 
-
-             
+def row_sum(ar):
+     for i in range(N):
+          s = np.sum(ar[i, :])
+def column_sum(ar):
+     for j in range(N):
+          s = np.sum(ar[:, j])
 ######## Run ##########
+
+
 ##### Performance #####
-t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
-t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
-###### Results ########
-M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
-M_vectorize = compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter)
+t, M = benchmark(row_sum,A)
+t, M = benchmark(column_sum,A)
+#t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
+#t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
+
+###### Sanity ########
+#M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
+#M_vectorize = compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter)
 
 
 
 ##### Compare #####
-results_sanity(M_naive, M_vectorize)
-compare_results(M_naive, M_vectorize)
+#results_sanity(M_naive, M_vectorize)
+#compare_results(M_naive, M_vectorize)
+
 
 
 ####### Plotter ########
-plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
-plt.colorbar()
-plt.title('Mandelbrot')
+#plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
+#plt.colorbar()
+#plt.title('Mandelbrot')
 #plt.savefig('Mandelbrot.png')
-plt.show()
+#plt.show()
 
 
 
