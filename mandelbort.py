@@ -23,7 +23,7 @@ A = np.random.rand(N, N)
 
                                               
 ######## Main ##########
-
+@profile
 def mandelbrot_point(c, max_iter):
     z = 0+0j
     for i in range(max_iter):
@@ -32,6 +32,7 @@ def mandelbrot_point(c, max_iter):
             return i
     return max_iter
 
+@profile
 def compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter):
         result = np.zeros((height, width), dtype=int)
 
@@ -118,6 +119,9 @@ def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
 
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 ######## Run ##########
+##### line_profiler ######
+compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
+
 
 ##### Problem Size Scaling #####
 #runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
@@ -150,12 +154,12 @@ def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
 
 
 ##### Problem Size Scaling ######
-x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
+#x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
-plt.figure()
-plt.plot(x, y, marker='o')
-plt.xlabel('Grid Size (N x N)')
-plt.ylabel('Median Runtime (s)')
-plt.title('Runtime vs Grid Size')
-plt.grid(True)
-plt.show()
+#plt.figure()
+#plt.plot(x, y, marker='o')
+#plt.xlabel('Grid Size (N x N)')
+#plt.ylabel('Median Runtime (s)')
+#plt.title('Runtime vs Grid Size')
+#plt.grid(True)
+#plt.show()
