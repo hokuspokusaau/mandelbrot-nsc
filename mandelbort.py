@@ -113,17 +113,14 @@ def compare_results(one_result, another_result):
      print(f"Different pixels: {(diff > 0).sum()}")
 
 
-def benchmark(func, *args, n_runs=3):
-     # Time func, return median of n_runs.
-     times = []
-     for _ in range(n_runs):
-          t0 = time.perf_counter()
-          result = func(*args)
-          times.append(time.perf_counter() - t0)
-     median_t = statistics.median(times)
-     print(f"Median for {func}: {median_t :.4f}s "
-           f"(min={min(times) :.4f}, max={max(times) :.4f})")
-     return median_t, result
+def benchmark(func, *args, n_runs=3, **kwargs):
+    times = []
+    for _ in range(n_runs):
+        func(*args, **kwargs)
+        t0 = time.perf_counter()
+        result = func(*args, **kwargs)
+        times.append(time.perf_counter() - t0)
+    return statistics.median(times), result
 
 def row_sum(ar):
      for i in range(N):
@@ -159,57 +156,84 @@ def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
 ##### line_profiler ######
 #compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
 
-##### JIT / JIT_Hybrid #####
-_ = compute_mandelbrot_hybrid(-2, 1, -1.5, 1.5, 1024, 1024, 100)
-_ = compute_mandelbrot_njit(-2, 1, -1.5, 1.5, 1024, 1024, 100)
+##### Time comparisons #####
+
+t_naive,_ = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
+t_vectorize, _ = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter) 
+t_full, _ = benchmark(compute_mandelbrot_njit,xmin, xmax, ymin, ymax, width, height, max_iter)
+t_hybrid, _ = benchmark(compute_mandelbrot_hybrid,xmin, xmax, ymin, ymax, width, height, max_iter) 
+t_full_32, _ = benchmark(compute_mandelbrot_njit,xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float32)
+  
 
 
-t_full, _ = benchmark(compute_mandelbrot_njit,-2, 1, -1.5, 1.5, 1024, 1024, 100)
-t_hybrid, _ = benchmark(compute_mandelbrot_hybrid,-2, 1, -1.5, 1.5, 1024, 1024, 100) 
-
-
-print(f"Hybrid:               {t_hybrid: .10f}s")
-print(f"Full njit Numba:      {t_full:.10f}s")
-print(f"Ratio:                {t_hybrid/t_full :.5f}x")
+print(f"Naive:               {t_naive: .10f}s")
+print(f"Vectorize:           {t_vectorize: .10f}s")
+print(f"Hybrid:              {t_hybrid: .10f}s")
+print(f"Full njit Numba:     {t_full:.10f}s")
+print(f"Full njit Numba 32:  {t_full_32:.10f}s")
+print(f"Ratio (Vectorize):   {t_naive/t_vectorize :.5f}x")
+print(f"Ratio (Hybrid):      {t_naive/t_hybrid :.5f}x")
+print(f"Ratio (Full njit):   {t_naive/t_full :.5f}x")
+print(f"ratio (Full njit 32): {t_full_32/t_full :.5f}x")
+print(f"Ratio:               {t_hybrid/t_full :.5f}x")
 
 
 ##### Problem Size Scaling #####
 #runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
 ##### Performance #####
-#t, M = benchmark(row_sum,A)
-#t, M = benchmark(column_sum,A)
-#t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
-#t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
-
+'''
+t, M = benchmark(row_sum,A)
+t, M = benchmark(column_sum,A)
+t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
+t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
+'''
 ###### Sanity ########
+'''
 #M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
 #M_vectorize = compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter)
-
+'''
 
 
 ##### Compare #####
-#results_sanity(M_naive, M_vectorize)
-#compare_results(M_naive, M_vectorize)
-
+'''
+results_sanity(M_naive, M_vectorize)
+compare_results(M_naive, M_vectorize)
+'''
 
 
 ####### Plotter ########
 ##### Mandelbrot #####
-#plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
-#plt.colorbar()
-#plt.title('Mandelbrot')
-#plt.savefig('Mandelbrot.png')
-#plt.show()
+'''
+plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
+plt.colorbar()
+plt.title('Mandelbrot')
+plt.savefig('Mandelbrot.png')
+plt.show()
+'''
 
+##### Visual Comparison #####
+r32 = compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float32)
+r64 = compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float64)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+for ax, result, title in zip(axes, [r32, r64], ['float32', 'float64 (ref)']):
+     ax.imshow(result, cmap='viridis')
+     ax.set_title(title); ax.axis('off')
+plt.savefig('float comparison.png', dpi=150)
+plt.show()
+     
+print(f"Max diff float 32 vs float64: {np.abs(r32-r64).max()}")
 
 ##### Problem Size Scaling ######
-#x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
+'''
+x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
-#plt.figure()
-#plt.plot(x, y, marker='o')
-#plt.xlabel('Grid Size (N x N)')
-#plt.ylabel('Median Runtime (s)')
-#plt.title('Runtime vs Grid Size')
-#plt.grid(True)
-#plt.show()
+plt.figure()
+plt.plot(x, y, marker='o')
+plt.xlabel('Grid Size (N x N)')
+plt.ylabel('Median Runtime (s)')
+plt.title('Runtime vs Grid Size')
+plt.grid(True)
+plt.show()
+'''
