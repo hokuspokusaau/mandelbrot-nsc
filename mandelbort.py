@@ -2,10 +2,12 @@ import numpy as np
 import time
 import statistics
 import matplotlib.pyplot as plt
+from numba import njit
 """
 Mandelbrot set generator
 By [Marcus d Almeida]
 Course: Numerical Scientific Computing 2026
+AI has been used extensively for fixing errors throughout the code. Everything has been made and written by the author.
 """
 ##### PARAMETERS #####
 xmin    = -2
@@ -23,7 +25,7 @@ A = np.random.rand(N, N)
 
                                               
 ######## Main ##########
-@profile
+
 def mandelbrot_point(c, max_iter):
     z = 0+0j
     for i in range(max_iter):
@@ -32,7 +34,6 @@ def mandelbrot_point(c, max_iter):
             return i
     return max_iter
 
-@profile
 def compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter):
         result = np.zeros((height, width), dtype=int)
 
@@ -43,6 +44,44 @@ def compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter):
              for j, x in enumerate(xs):
                   c = complex(x,y)
                   result[i, j] = mandelbrot_point(c, max_iter)
+        
+        return result
+
+@njit
+def mandelbrot_point_njit(c, max_iter=100):
+     z = 0j
+     for n in range(max_iter):
+          if z.real * z.real + z.imag * z.imag > 4.0:
+               return n
+          z = z * z + c
+     return max_iter
+
+@njit
+def compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter):
+        result = np.zeros((height, width), dtype=np.int32)
+
+        xs = np.linspace(xmin, xmax, width)
+        ys = np.linspace(ymin, ymax, height)
+
+        for i in range(height):
+                  for j in range(width):
+                       c = xs[j] + 1j * ys[i]
+                       z = 0j
+                       n = 0
+                  result[i, j] = mandelbrot_point_njit(c, max_iter)
+        
+        return result
+
+def compute_mandelbrot_hybrid(xmin, xmax, ymin, ymax, width, height, max_iter):
+        result = np.zeros((height, width), dtype=int)
+
+        xs = np.linspace(xmin, xmax, width)
+        ys = np.linspace(ymin, ymax, height)
+
+        for i, y in enumerate(ys) :
+             for j, x in enumerate(xs):
+                  c = complex(x,y)
+                  result[i, j] = mandelbrot_point_njit(c, max_iter)
         
         return result
 
@@ -120,7 +159,18 @@ def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 ######## Run ##########
 ##### line_profiler ######
-compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
+#compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
+
+##### JIT / JIT_Hybrid #####
+_ = compute_mandelbrot_hybrid(-2, 1, -1.5, 1.5, 64, 64, 100)
+_ = compute_mandelbrot_njit(-2, 1, -1.5, 1.5, 64, 64, 100)
+
+t_hybrid, _ = benchmark(compute_mandelbrot_hybrid,-2, 1, -1.5, 1.5, 64, 64, 100) 
+t_full, _ = benchmark(compute_mandelbrot_njit,-2, 1, -1.5, 1.5, 64, 64, 100)
+
+print(f"Hybrid:               {t_hybrid: .3f}s")
+print(f"Full njit Numba:      {t_full:.3f}s")
+print(f"Ratio:                {t_hybrid/t_full :.1f}x")
 
 
 ##### Problem Size Scaling #####
