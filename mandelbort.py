@@ -3,11 +3,22 @@ import time
 import statistics
 import matplotlib.pyplot as plt
 from numba import njit
+from multiprocessing import Pool
+import os
 """
 Mandelbrot set generator
 By [Marcus d Almeida]
 Course: Numerical Scientific Computing 2026
 AI has been used extensively for fixing errors throughout the code. Everything has been made and written by the author.
+
+run in nsc2026
+
+My Spec:
+Apple M1 pro:
+8-Core CPU (6p and 2e)
+14-Core GPU
+16-Core Neural Engine
+200 GB/s memory bandwidth
 """
 ##### PARAMETERS #####
 xmin    = -2
@@ -24,8 +35,8 @@ N = 10000
 A = np.random.rand(N, N)
 
                                               
-######## Main ##########
-
+#region Main
+#region MP1
 def mandelbrot_point(c, max_iter):
     z = 0+0j
     for i in range(max_iter):
@@ -101,6 +112,70 @@ def compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter
           M[mask] += 1
      return M
 
+def column_sum(ar):
+     for j in range(N):
+          s = np.sum(ar[:, j])
+
+def row_sum(ar):
+     for i in range(N):
+          s = np.sum(ar[i, :])
+
+#region MP2
+def esti_pi_serial(num_samples):
+     x = np.random.random(num_samples)
+     y = np.random.random(num_samples)
+
+     inside = (x*x + y*y) <= 1.0
+     pi_est = 4 * np.mean(inside)
+     print(pi_est)
+     return pi_est
+
+@njit
+def mandelbrot_pixel(c_real, c_imag, max_iter):
+    z_real = 0.0
+    z_imag = 0.0
+    for i in range(max_iter):
+          z_sq = z_real * z_real + z_imag * z_imag
+          if z_sq > 4.0:
+               return i
+          old_real = z_real
+          old_imag = z_imag
+          z_imag = 2.0 * old_real * old_imag + c_imag
+          z_real = old_real * old_real - old_imag * old_imag + c_real
+    return max_iter
+
+@njit
+def mandelbrot_chunk(row_start, row_end, N, x_min, x_max, y_min, y_max, max_iter):
+    out = np.empty((row_end - row_start, N), dtype=np.int32)
+    dx = 0.0 if N <= 1 else (x_max - x_min) / (N - 1)
+    dy = 0.0 if N <= 1 else (y_max - y_min) / (N - 1)
+    for r in range(row_end - row_start):
+       c_imag = y_min + (r + row_start) * dy
+       for col in range(N):
+          c_real = x_min + col * dx
+          out[r, col] = mandelbrot_pixel(c_real, c_imag, max_iter)
+    return out
+
+def mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter=100):
+    return mandelbrot_chunk(0, N, N, x_min, x_max, y_min, y_max, max_iter)
+
+def benchmark_mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter=100, n_runs=3):
+    # Warm up compilation once; then measure steady-state runtime.
+    mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter)
+
+    times = []
+    result = None
+    for _ in range(n_runs):
+       t0 = time.perf_counter()
+       result = mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter)
+       times.append(time.perf_counter() - t0)
+
+    return statistics.median(times), result
+
+
+
+
+#region General testing
 def results_sanity(one_result, another_result):
      if np.allclose(one_result, another_result):
           print("Results match!")
@@ -111,24 +186,6 @@ def compare_results(one_result, another_result):
      diff = np.abs(one_result - another_result)
      print(f"Max difference : {diff.max()}")
      print(f"Different pixels: {(diff > 0).sum()}")
-
-
-def benchmark(func, *args, n_runs=3, **kwargs):
-    times = []
-    for _ in range(n_runs):
-        func(*args, **kwargs)
-        t0 = time.perf_counter()
-        result = func(*args, **kwargs)
-        times.append(time.perf_counter() - t0)
-    return statistics.median(times), result
-
-def row_sum(ar):
-     for i in range(N):
-          s = np.sum(ar[i, :])
-def column_sum(ar):
-     for j in range(N):
-          s = np.sum(ar[:, j])
-
 
 def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
      gridsize = [256, 512, 1024, 2048, 4096]
@@ -151,43 +208,73 @@ def runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3):
                f"(min={min(times) :.4f}, max={max(times) :.4f})")
      return gridsize, median_times, result
 
+def benchmark(func, *args, n_runs=3, **kwargs):
+     times = []
+     result = None
+     for _ in range(n_runs):
+          t0 = time.perf_counter()
+          result = func(*args, **kwargs)
+          times.append(time.perf_counter() - t0)
+     return statistics.median(times), result
+
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
-######## Run ##########
+#region Run
+
+##### Run #####
+
+##### Monte Carlo pi #####
+#t_serial, _ = benchmark(esti_pi_serial,10_000_000)
+
+#print(f"time for t_serial          {t_serial: .3f}s")
+#print("True Pi = 3.14159265")
+
+##### Mandelbrot serial benchmark with refactored functions #####
+t_mb_serial, M_serial = benchmark_mandelbrot_serial(
+     width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3
+)
+print(f"Mandelbrot serial (Numba chunk): {t_mb_serial:.3f}s, shape={M_serial.shape}")
+
+
+##### Core Count #####
+# Logical = 8
+#print(os.cpu_count())
+# Physical = 8
+#print(psutil.cpu_count(logical=False))
+
+
 ##### line_profiler ######
 #compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
 
 ##### Time comparisons #####
 
-t_naive,_ = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
-t_vectorize, _ = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter) 
-t_full, _ = benchmark(compute_mandelbrot_njit,xmin, xmax, ymin, ymax, width, height, max_iter)
-t_hybrid, _ = benchmark(compute_mandelbrot_hybrid,xmin, xmax, ymin, ymax, width, height, max_iter) 
-t_full_32, _ = benchmark(compute_mandelbrot_njit,xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float32)
-  
+t_old_numba, M_old_numba = benchmark(
+     compute_mandelbrot_njit, xmin, xmax, ymin, ymax, width, height, max_iter
+)
+t_vectorize, M_vectorize = benchmark(
+     compute_mandelbrot_vectorize, xmin, xmax, ymin, ymax, width, height, max_iter
+)
 
 
-print(f"Naive:               {t_naive: .10f}s")
+print(f"Old Numba:           {t_old_numba: .10f}s")
 print(f"Vectorize:           {t_vectorize: .10f}s")
-print(f"Hybrid:              {t_hybrid: .10f}s")
-print(f"Full njit Numba:     {t_full:.10f}s")
-print(f"Full njit Numba 32:  {t_full_32:.10f}s")
-print(f"Ratio (Vectorize):   {t_naive/t_vectorize :.5f}x")
-print(f"Ratio (Hybrid):      {t_naive/t_hybrid :.5f}x")
-print(f"Ratio (Full njit):   {t_naive/t_full :.5f}x")
-print(f"ratio (Full njit 32): {t_full_32/t_full :.5f}x")
-print(f"Ratio:               {t_hybrid/t_full :.5f}x")
+print(f"Numba chunk serial:  {t_mb_serial:.10f}s")
+print(f"Ratio (Vectorize):   {t_old_numba/t_vectorize :.5f}x")
+print(f"Ratio (Numba chunk): {t_old_numba/t_mb_serial :.5f}x")
 
+print("Comparing old MP1 Numba output with refactored serial output")
+results_sanity(M_old_numba, M_serial)
+compare_results(M_old_numba, M_serial)
 
 ##### Problem Size Scaling #####
 #runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
 
 ##### Performance #####
-'''
+
 t, M = benchmark(row_sum,A)
 t, M = benchmark(column_sum,A)
 t, M = benchmark(compute_mandelbrot_vectorize,xmin, xmax, ymin, ymax, width, height, max_iter)
 t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
-'''
+
 ###### Sanity ########
 '''
 #M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
@@ -202,7 +289,7 @@ compare_results(M_naive, M_vectorize)
 '''
 
 
-####### Plotter ########
+#region Plotter
 ##### Mandelbrot #####
 '''
 plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
@@ -213,6 +300,7 @@ plt.show()
 '''
 
 ##### Visual Comparison #####
+'''
 r32 = compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float32)
 r64 = compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float64)
 
@@ -224,7 +312,7 @@ plt.savefig('float comparison.png', dpi=150)
 plt.show()
      
 print(f"Max diff float 32 vs float64: {np.abs(r32-r64).max()}")
-
+'''
 ##### Problem Size Scaling ######
 '''
 x, y, _ = runtime_gridsize (xmin, xmax, ymin, ymax, max_iter, n_runs=3)
