@@ -1,6 +1,10 @@
 from multiprocessing import Pool
 import time
 import numpy as np
+"""
+GIT TESTING
+"""
+
 
 def square(x):
     time.sleep(0.1)
