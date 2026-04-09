@@ -260,7 +260,7 @@ def benchmark_mandelbrot_parallel(
      times = []
      result = None
      with Pool(processes=num_processes) as pool:
-          # Warm up JIT compilation in every worker before timed measurements.
+          # Warm up JIT compilation every worker before timed measurements.
           pool.map(_worker, chunks)
 
           for _ in range(n_runs):
@@ -279,12 +279,48 @@ def sweep_mandelbrot_parallel( N, x_min, x_max, y_min, y_max, max_iter=100, n_ru
 
      print("Parallel worker sweep:")
      print("workers    time      speedup    efficiency")
+     best_workers = 1
+     best_time = float('inf')
      for num_workers in range(1, cpu_count + 1):
           t_parallel, _ = benchmark_mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=max_iter, num_processes=num_workers, n_runs=n_runs)
           speedup = serial_time / t_parallel
           efficiency = speedup / num_workers
           print(f"{num_workers:2d}           {t_parallel:.3f}s               {speedup:.2f}x                  {efficiency:.2f}")
-     return cpu_count
+          if t_parallel < best_time:
+               best_time = t_parallel
+               best_workers = num_workers
+     return best_workers
+
+
+def sweep_mandelbrot_l4_chunks(N, x_min, x_max, y_min, y_max, max_iter=100, n_workers=4, n_runs=3, serial_time=None):
+     if serial_time is None:
+          serial_time, _ = benchmark_mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter=max_iter, n_runs=n_runs)
+
+     print(f"L4 chunk sweep (fixed n_workers={n_workers}):")
+     print("n_chunks          time      speedup    LIF")
+     chunk_configs = [1 * n_workers, 2 * n_workers, 4 * n_workers, 8 * n_workers, 16 * n_workers]
+     
+     best_n_chunks = chunk_configs[0]
+     best_time = float('inf')
+     with Pool(processes=n_workers) as pool:
+          pool.map(_worker, [(0, 8, 8, x_min, x_max, y_min, y_max, max_iter)]) # tiny warm
+          for n_chunks in chunk_configs:
+               times = []
+               for _ in range(n_runs):
+                    t0 = time.perf_counter()
+                    result = mandelbrot_parallel_l4(N, x_min, x_max, y_min, y_max, max_iter=max_iter, n_workers=n_workers, n_chunks=n_chunks, pool=pool)
+                    times.append(time.perf_counter() - t0)
+               t_parallel = statistics.median(times)
+               speedup = serial_time / t_parallel
+               lif = n_workers / speedup - 1 # Using speedup thus deviding 
+               print(f"{n_chunks:2d} ({n_chunks//n_workers:2d}x)           {t_parallel:.3f}s      {speedup:.2f}x       {lif:.3f}")
+               if t_parallel < best_time:
+                    best_time = t_parallel
+                    best_n_chunks = n_chunks
+
+     return best_n_chunks
+
+
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
 #region Run
 
@@ -308,22 +344,24 @@ def main():
      results_sanity(M_serial, M_parallel)
      compare_results(M_serial, M_parallel)
 
-     sweep_mandelbrot_parallel(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3, serial_time=t_mb_serial)
+     ##### sweep #####
+     best_workers = sweep_mandelbrot_parallel(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3, serial_time=t_mb_serial)
+     best_chunks = sweep_mandelbrot_l4_chunks(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=best_workers, n_runs=3, serial_time=t_mb_serial)
 
      ##### Mandelbrot L4 parallel benchmark #####
-     t_mb_l4, M_l4 = benchmark(mandelbrot_parallel_l4, width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=num_processes)
-     print(f"Mandelbrot L4 parallel ({num_processes} workers): {t_mb_l4:.3f}s")
+     with Pool(processes=best_workers) as pool:
+          pool.map(_worker, [(0, 8, 8, xmin, xmax, ymin, ymax, max_iter)])  # warm-up
+          t_mb_l4, M_l4 = benchmark(lambda: mandelbrot_parallel_l4(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=best_workers, n_chunks=best_chunks, pool=pool), n_runs=3)
+     print(f"Mandelbrot L4 parallel ({best_workers} workers, {best_chunks} chunks): {t_mb_l4:.3f}s")
      print("Comparing L4 parallel output with serial output")
      results_sanity(M_serial, M_l4)
      compare_results(M_serial, M_l4)
 
      ##### Time comparisons #####
      t_old_numba, M_old_numba = benchmark(
-          compute_mandelbrot_njit, xmin, xmax, ymin, ymax, width, height, max_iter
-     )
+          compute_mandelbrot_njit, xmin, xmax, ymin, ymax, width, height, max_iter)
      t_vectorize, M_vectorize = benchmark(
-          compute_mandelbrot_vectorize, xmin, xmax, ymin, ymax, width, height, max_iter
-     )
+          compute_mandelbrot_vectorize, xmin, xmax, ymin, ymax, width, height, max_iter)
 
      print(f"Old Numba:           {t_old_numba: .3f}s")
      print(f"Vectorize:           {t_vectorize: .3f}s")
@@ -331,7 +369,15 @@ def main():
      print(f"Numba chunk parallel:{t_mb_parallel:.3f}s")
      print(f"Ratio (Vectorize):   {t_old_numba/t_vectorize :.5f}x")
      print(f"Ratio (Numba chunk): {t_old_numba/t_mb_serial :.5f}x")
+     ##### speeduptable #####
+     t_naive, _ = benchmark(compute_mandelbrot, xmin, xmax, ymin, ymax, width, height, max_iter, n_runs=3)
+     t_parallel_opt = t_mb_l4
 
+     print("Implementation           Time (s)   Speedup")
+     print(f"Naive Python            {t_naive:.3f}      1.00x")
+     print(f"NumPy                   {t_vectorize:.3f}      {t_naive/t_vectorize:.2f}x")
+     print(f"Numba (@njit)           {t_old_numba:.3f}      {t_naive/t_old_numba:.2f}x")
+     print(f"Parallel (opt)          {t_parallel_opt:.3f}      {t_naive/t_parallel_opt:.2f}x")
      print("Comparing old MP1 Numba output with serial output")
      results_sanity(M_old_numba, M_serial)
      compare_results(M_old_numba, M_serial)
