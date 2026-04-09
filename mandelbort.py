@@ -121,7 +121,7 @@ def row_sum(ar):
           s = np.sum(ar[i, :])
 
 #region MP2
-@njit
+@njit(cache=True)
 # Returns the escape iteration count for single point complex point
 def mandelbrot_pixel(c_real, c_imag, max_iter):
     z_real = 0.0
@@ -136,7 +136,7 @@ def mandelbrot_pixel(c_real, c_imag, max_iter):
           z_real = old_real * old_real - old_imag * old_imag + c_real
     return max_iter
 
-@njit
+@njit(cache=True) 
 # Loops over rows and all columns. Computes pixel coordinates from index + bounds -- No arrays received as input.
 def mandelbrot_chunk(row_start, row_end, N, x_min, x_max, y_min, y_max, max_iter):
     out = np.empty((row_end - row_start, N), dtype=np.int32)
@@ -168,6 +168,7 @@ def benchmark_mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter=100, n_r
 def _worker(args):
      return mandelbrot_chunk(*args)
 
+
 def mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=100, num_processes=4):
      chunk_size = max(1, N // num_processes)
      chunks = []
@@ -180,6 +181,23 @@ def mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=100, num_process
      with Pool(processes=num_processes) as pool:
           parts = pool.map(_worker, chunks)
 
+     return np.vstack(parts)
+
+def mandelbrot_parallel_l4(N, x_min, x_max, y_min, y_max, max_iter=100, n_workers=4, n_chunks=None, pool=None):
+     if n_chunks is None:
+          n_chunks = n_workers
+     chunk_size = max(1, N // n_chunks)
+     chunks, row = [], 0
+     while row < N:
+          row_end = min(row + chunk_size, N)
+          chunks.append((row, row_end, N, x_min, x_max, y_min, y_max, max_iter))
+          row = row_end
+     if pool is not None:          # Caller manages pool; skip startup + warmup
+          return np.vstack(pool.map(_worker, chunks))
+     tiny = [(0, 8, 8, x_min, x_max, y_min, y_max, max_iter)]
+     with Pool(processes=n_workers) as p:
+          p.map(_worker, tiny)     # warm-up: load JIT cache in workers
+          parts = p.map(_worker, chunks)
      return np.vstack(parts)
 
 
@@ -280,9 +298,7 @@ def main():
      # print("True Pi = 3.14159265")
 
      ##### Mandelbrot serial benchmark #####
-     t_mb_serial, M_serial = benchmark_mandelbrot_serial(
-          width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3
-     )
+     t_mb_serial, M_serial = benchmark_mandelbrot_serial(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3)
      print(f"Mandelbrot serial (Numba chunk): {t_mb_serial:.3f}s, shape={M_serial.shape}")
 
      ##### Mandelbrot parallel benchmark #####
@@ -293,6 +309,13 @@ def main():
      compare_results(M_serial, M_parallel)
 
      sweep_mandelbrot_parallel(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3, serial_time=t_mb_serial)
+
+     ##### Mandelbrot L4 parallel benchmark #####
+     t_mb_l4, M_l4 = benchmark(mandelbrot_parallel_l4, width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=num_processes)
+     print(f"Mandelbrot L4 parallel ({num_processes} workers): {t_mb_l4:.3f}s")
+     print("Comparing L4 parallel output with serial output")
+     results_sanity(M_serial, M_l4)
+     compare_results(M_serial, M_l4)
 
      ##### Time comparisons #####
      t_old_numba, M_old_numba = benchmark(
