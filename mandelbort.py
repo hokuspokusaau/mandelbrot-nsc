@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 from numba import njit
 from multiprocessing import Pool
 import os
+from dask import delayed
+from dask.distributed import Client, LocalCluster
+import dask
+
 """
 Mandelbrot set generator
 By [Marcus d Almeida]
@@ -201,7 +205,16 @@ def mandelbrot_parallel_l4(N, x_min, x_max, y_min, y_max, max_iter=100, n_worker
      return np.vstack(parts)
 
 
-
+# region Dask I 
+def mandelbrot_dask(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=32):
+     chunk_size = max(1, N // n_chunks)
+     tasks, row = [], 0
+     while row < N:
+          row_end = min(row + chunk_size, N)
+          tasks.append(delayed(mandelbrot_chunk)(row, row_end, N, x_min, x_max, y_min, y_max, max_iter))
+          row = row_end
+     parts = dask.compute(*tasks)
+     return np.vstack(parts)
 
 #region General testing
 def results_sanity(one_result, another_result):
@@ -281,15 +294,17 @@ def sweep_mandelbrot_parallel( N, x_min, x_max, y_min, y_max, max_iter=100, n_ru
      print("workers    time      speedup    efficiency")
      best_workers = 1
      best_time = float('inf')
+     sweep_data = []
      for num_workers in range(1, cpu_count + 1):
           t_parallel, _ = benchmark_mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=max_iter, num_processes=num_workers, n_runs=n_runs)
           speedup = serial_time / t_parallel
           efficiency = speedup / num_workers
           print(f"{num_workers:2d}           {t_parallel:.3f}s               {speedup:.2f}x                  {efficiency:.2f}")
+          sweep_data.append((num_workers, t_parallel, speedup, efficiency))
           if t_parallel < best_time:
                best_time = t_parallel
                best_workers = num_workers
-     return best_workers
+     return best_workers, sweep_data
 
 
 def sweep_mandelbrot_l4_chunks(N, x_min, x_max, y_min, y_max, max_iter=100, n_workers=4, n_runs=3, serial_time=None):
@@ -345,8 +360,19 @@ def main():
      compare_results(M_serial, M_parallel)
 
      ##### sweep #####
-     best_workers = sweep_mandelbrot_parallel(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3, serial_time=t_mb_serial)
+     best_workers, sweep_data = sweep_mandelbrot_parallel(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_runs=3, serial_time=t_mb_serial)
      best_chunks = sweep_mandelbrot_l4_chunks(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=best_workers, n_runs=3, serial_time=t_mb_serial)
+
+     ##### Plot speedup curve #####
+     workers = [d[0] for d in sweep_data]
+     speedups = [d[2] for d in sweep_data]
+     plt.figure()
+     plt.plot(workers, speedups, marker='o')
+     plt.xlabel('n_workers')
+     plt.ylabel('speedup')
+     plt.title('Parallel Speedup Curve')
+     plt.grid(True)
+     plt.show()
 
      ##### Mandelbrot L4 parallel benchmark #####
      with Pool(processes=best_workers) as pool:
@@ -373,7 +399,7 @@ def main():
      t_naive, _ = benchmark(compute_mandelbrot, xmin, xmax, ymin, ymax, width, height, max_iter, n_runs=3)
      t_parallel_opt = t_mb_l4
 
-     print("Implementation           Time (s)   Speedup")
+     print("Implementatio           Time (s)   Speedup")
      print(f"Naive Python            {t_naive:.3f}      1.00x")
      print(f"NumPy                   {t_vectorize:.3f}      {t_naive/t_vectorize:.2f}x")
      print(f"Numba (@njit)           {t_old_numba:.3f}      {t_naive/t_old_numba:.2f}x")
@@ -400,8 +426,23 @@ def main():
 
 
 if __name__ == "__main__":
-     main()
+     N, max_iter = 1024, 100
+     X_MIN, X_MAX, Y_MIN, Y_MAX = -2.5, 1.0, -1.25, 1.25
+     cluster = LocalCluster(n_workers=8, threads_per_worker=1)
+     client = Client(cluster)
+     client.run(lambda: mandelbrot_chunk(0, 8, 8, X_MIN, X_MAX, Y_MIN, Y_MAX, 10)) #WARM
 
+     ref = mandelbrot_serial(N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter)
+
+     times = []
+     for _ in range(3):
+          t0 = time.perf_counter()
+          result = mandelbrot_dask(N, X_MIN, X_MAX, Y_MIN, Y_MAX, max_iter)
+          
+          times.append(time.perf_counter() - t0)
+     print(f"Dask local (n_chunks=32): {statistics.median(times):.3f}s")
+     print(f"Sanity check (Dask vs serial): {np.array_equal(ref, result)}")
+     client.close(); cluster.close()
 ###### Sanity ########
 '''
 #M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
