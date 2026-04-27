@@ -415,12 +415,12 @@ def main():
      t_naive, _ = benchmark(compute_mandelbrot, xmin, xmax, ymin, ymax, width, height, max_iter, n_runs=3)
      _, t_ldask, _, _ = mandelbrot_dask_IB(width, xmin, xmax, ymin, ymax, max_iter=max_iter, n_workers=8, n_runs=3)
 
-     print("Implementation           Time (s)                     Speedup")
-     print(f"Naive Python            {t_naive:.3f}               1.00x")
-     print(f"NumPy                   {t_vectorize:.3f}           {t_naive/t_vectorize:.2f}x")
-     print(f"Numba (@njit)           {t_old_numba:.3f}           {t_naive/t_old_numba:.2f}x")
-     print(f"Parallel (opt)          {t_parallel_opt:.3f}        {t_naive/t_parallel_opt:.2f}x")
-     print(f"Dask local              {t_ldask:.3f}               {t_naive/t_ldask:.2f}x")
+     print(f"{'Implementation':<20}{'Time (s)':>12}{'Speedup':>12}")
+     print(f"{'Naive Python':<20}{t_naive:>12.3f}{'1.00x':>12}")
+     print(f"{'NumPy':<20}{t_vectorize:>12.3f}{(f'{t_naive/t_vectorize:.2f}x'):>12}")
+     print(f"{'Numba (@njit)':<20}{t_old_numba:>12.3f}{(f'{t_naive/t_old_numba:.2f}x'):>12}")
+     print(f"{'Parallel (opt)':<20}{t_parallel_opt:>12.3f}{(f'{t_naive/t_parallel_opt:.2f}x'):>12}")
+     print(f"{'Dask local':<20}{t_ldask:>12.3f}{(f'{t_naive/t_ldask:.2f}x'):>12}")
      print("Comparing old MP1 Numba output with serial output")
      
      # Example parallel run and correctness check.
