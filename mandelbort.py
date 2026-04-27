@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import statistics
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: F401
 from numba import njit
 from multiprocessing import Pool
 import os
@@ -25,9 +25,9 @@ xmin    = -2
 xmax    = 1
 ymin    = -1.5
 ymax    = 1.5
-width   = 1024
-height  = 1024
-max_iter = 100
+width   = 512
+height  = 512
+max_iter = 1000
 ######################
 
 #####  #####
@@ -114,11 +114,11 @@ def compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter
 
 def column_sum(ar):
      for j in range(N):
-          s = np.sum(ar[:, j])
+          _ = np.sum(ar[:, j])
 
 def row_sum(ar):
      for i in range(N):
-          s = np.sum(ar[i, :])
+          _ = np.sum(ar[i, :])
 
 #region MP2
 @njit(cache=True)
@@ -170,6 +170,32 @@ def _worker(args):
 
 
 def mandelbrot_parallel(N, x_min, x_max, y_min, y_max, max_iter=100, num_processes=4):
+     """Compute a Mandelbrot escape-count image using multiprocessing.
+
+     Divides image rows into chunks and computes them in parallel.
+
+     Parameters
+     ----------
+     N: int
+          Output resolution NxN.
+     x_min: float
+          Min real coordinate of the complex plane.
+     x_max: float
+          Max real coordinate of the complex plane.
+     y_min: float
+          Min imaginary coordinate of the complex plane.
+     y_max: float
+          Max imaginary coordinate of the complex plane.
+     max_iter: int
+          Max number of Mandelbrot iterations per pixel.
+     num_processes: int
+          Number of worker processes used by the multiprocessing pool.
+
+     Returns
+     -------
+     np.ndarray
+          Two-dimensional array of shape NxN with escape iteration counts.
+     """
      chunk_size = max(1, N // num_processes)
      chunks = []
      row = 0
@@ -308,7 +334,7 @@ def sweep_mandelbrot_l4_chunks(N, x_min, x_max, y_min, y_max, max_iter=100, n_wo
                times = []
                for _ in range(n_runs):
                     t0 = time.perf_counter()
-                    result = mandelbrot_parallel_l4(N, x_min, x_max, y_min, y_max, max_iter=max_iter, n_workers=n_workers, n_chunks=n_chunks, pool=pool)
+                    result = mandelbrot_parallel_l4(N, x_min, x_max, y_min, y_max, max_iter=max_iter, n_workers=n_workers, n_chunks=n_chunks, pool=pool)  # noqa: F841
                     times.append(time.perf_counter() - t0)
                t_parallel = statistics.median(times)
                speedup = serial_time / t_parallel
@@ -402,6 +428,7 @@ def main():
 if __name__ == "__main__":
      main()
 
+
 ###### Sanity ########
 '''
 #M_naive = compute_mandelbrot(xmin, xmax, ymin, ymax, width, height, max_iter)
@@ -418,14 +445,14 @@ compare_results(M_naive, M_vectorize)
 
 #region Plotter
 ##### Mandelbrot #####
-'''
-plt.imshow(compute_mandelbrot_vectorize(xmin, xmax, ymin, ymax, width, height, max_iter), cmap='hot')
+"""
+result = compute_mandelbrot_vectorize(-0.7530, -0.7490, 0.0990, 0.1030, width, height, max_iter)
+plt.imshow(result, cmap='hot', origin='lower', extent=[-0.7530, -0.7490, 0.0990, 0.1030])
 plt.colorbar()
-plt.title('Mandelbrot')
+plt.title('Mandelbrot (seahorse valley)')
 plt.savefig('Mandelbrot.png')
 plt.show()
-'''
-
+"""
 ##### Visual Comparison #####
 '''
 r32 = compute_mandelbrot_njit(xmin, xmax, ymin, ymax, width, height, max_iter, dtype=np.float32)
