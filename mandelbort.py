@@ -29,8 +29,8 @@ xmin    = -2
 xmax    = 1
 ymin    = -1.5
 ymax    = 1.5
-width   = 1024
-height  = 1024
+width   = 4096 #passed as N in later functions
+height  = 4096
 max_iter = 100
 ######################
 
@@ -390,6 +390,62 @@ def mandelbrot_dask_IB(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=Non
      finally:
           client.close()
           cluster.close()
+
+
+def mandelbrot_dask_IB_U(N, x_min, x_max, y_min, y_max, max_iter=100, n_chunks=None, n_workers=8, n_runs=3):
+     chunk_configs = n_chunks if n_chunks is not None else [1, 2, 4, 8, 16, 32, 64]
+     client = Client("tcp://10.92.0.194:8786")
+     client.run(lambda: mandelbrot_chunk(0, 8, 8, x_min, x_max, y_min, y_max, 10)) #JIT Warm
+
+     try:
+          t_serial, ref = benchmark_mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter=max_iter, n_runs=n_runs)
+
+          print('\nL05 Dask chunk sweep')
+          print("n_chunks | time (s) | vs 1x | speedup | LIF")
+          sweep_data = []
+          baseline = None
+          best_n_chunks = chunk_configs[0]
+          best_time = float('inf')
+          best_lif = float('inf')
+
+          for chunk_count in chunk_configs:
+               times = []
+               for _ in range(n_runs):
+                    t0 = time.perf_counter()
+                    result = mandelbrot_dask(N, x_min, x_max, y_min, y_max, max_iter, n_chunks=chunk_count)
+                    times.append(time.perf_counter() - t0)
+
+               t_dask = statistics.median(times)
+               if baseline is None:
+                    baseline = t_dask
+               speedup = t_serial / t_dask
+               lif = n_workers * t_dask / t_serial - 1
+               sweep_data.append((chunk_count, t_dask, baseline / t_dask, speedup, lif))
+               print(f"{chunk_count:8d} | {t_dask:.3f} | {baseline / t_dask:.3f}x | {speedup:.3f}x | {lif:.3f}")
+               print(f"Sanity: {np.array_equal(ref, result)}")
+
+               if t_dask < best_time:
+                    best_time = t_dask
+                    best_n_chunks = chunk_count
+                    best_lif = lif
+
+          x = [row[0] for row in sweep_data]
+          y = [row[1] for row in sweep_data]
+          plt.figure()
+          plt.plot(x, y, marker='o')
+          plt.xscale('log', base=2)
+          plt.xlabel('n_chunks')
+          plt.ylabel('wall time (s)')
+          plt.title('Dask Chunk Sweep')
+          plt.grid(True)
+          plt.savefig('dask_chunk_sweep.png', dpi=150)
+          plt.show()
+          plt.close()
+
+          print(f"n_chunks_optimal={best_n_chunks}, t_min={best_time:.3f}s, LIF at t_min={best_lif:.3f}")
+          return best_n_chunks, best_time, best_lif, sweep_data
+     finally:
+          client.close()
 
 
 #t, M = benchmark(compute_mandelbrot,xmin, xmax, ymin, ymax, width, height, max_iter)
